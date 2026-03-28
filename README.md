@@ -117,14 +117,11 @@ cd partcl-macro-place-challenge
 # Initialize TILOS MacroPlacement submodule (required for evaluation)
 git submodule update --init external/MacroPlacement
 
-# Create virtual environment
-uv venv
+# Install the package and all dependencies
+uv sync
 
-# Install dependencies
-uv pip install -r requirements.txt
-
-# Test the infrastructure
-pytest
+# Verify the setup
+uv run evaluate submissions/examples/greedy_row_placer.py -b ibm01
 ```
 
 ### Run Your First Example
@@ -256,9 +253,5 @@ This project is licensed under the Apache License 2.0 - see [LICENSE.md](LICENSE
 The organizers may update or clarify rules, evaluation details, timelines, prizes, or infrastructure as needed to ensure fairness, technical accuracy, and smooth operation of the competition. Any updates will be communicated through official channels and will apply going forward.
 
 Participation in the competition constitutes acceptance of the current rules and any subsequent updates. The organizers’ decisions regarding scoring, eligibility, and interpretation of these rules are final.
-
-The organizers may update or clarify rules, evaluation details, timelines, prizes, or infrastructure as needed to ensure fairness, technical accuracy, and smooth operation of the competition. Any updates will be communicated through official channels and will apply going forward.
-
-Participation in the competition constitutes acceptance of the current rules and any subsequent updates. The organizers’ decisions regarding scoring, eligibility, and interpretation of these rules are final. 
 
 Submissions & contact information may be shared with sponsors.

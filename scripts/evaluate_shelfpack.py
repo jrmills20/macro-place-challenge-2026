@@ -21,12 +21,10 @@ import subprocess
 import torch
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from benchmark import Benchmark
-from loader import load_benchmark_from_dir
-from objective import compute_proxy_cost
-from utils import validate_placement
+from macro_place.benchmark import Benchmark
+from macro_place.loader import load_benchmark_from_dir
+from macro_place.objective import compute_proxy_cost
+from macro_place.utils import validate_placement
 
 
 class ShelfPackPlacer:

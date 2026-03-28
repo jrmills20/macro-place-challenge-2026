@@ -8,13 +8,9 @@ Usage:
     python scripts/convert_ibm_benchmarks.py
 """
 
-import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from loader import load_benchmark_from_dir
+from macro_place.loader import load_benchmark_from_dir
 
 def main():
     # Path to IBM benchmarks in MacroPlacement

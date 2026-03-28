@@ -15,10 +15,7 @@ import argparse
 import torch
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-from loader import load_benchmark_from_dir
+from macro_place.loader import load_benchmark_from_dir
 
 
 def generate_random_placement(benchmark, seed=42):

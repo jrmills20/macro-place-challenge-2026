@@ -38,7 +38,7 @@ class SimpleRandomPlacer:
         """
         torch.manual_seed(self.seed)
 
-        placement = torch.zeros(benchmark.num_macros, 2)
+        placement = benchmark.macro_positions.clone()
 
         for i in range(benchmark.num_macros):
             if benchmark.macro_fixed[i]:

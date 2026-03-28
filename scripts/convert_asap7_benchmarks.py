@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """Convert ASAP7 benchmarks to PyTorch tensor format."""
 
-import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-from loader import load_benchmark_from_dir
+from macro_place.loader import load_benchmark_from_dir
 
 def main():
     flows_dir = Path("external/MacroPlacement/Flows/ASAP7")

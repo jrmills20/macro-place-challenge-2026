@@ -198,7 +198,8 @@ The top 7 submissions by proxy score will be evaluated through the full OpenROAD
 external/MacroPlacement/Flows/NanGate45/
 ├── ariane133/    # RISC-V core, 133 macros
 ├── ariane136/    # RISC-V core, 136 macros
-└── mempool_tile/ # Memory pool, 20 macros
+├── mempool_tile/ # Memory pool, 20 macros
+└── nvdla/        # NVIDIA DLA, 128 macros
 ```
 
 Pre-processed `.pt` versions are available in `benchmarks/processed/public/` for quick loading:
