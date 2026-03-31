@@ -223,6 +223,7 @@ Submissions are ranked by **average proxy cost** across all 18 IBM benchmarks (l
 | Rank | Team | Avg Proxy Cost | Best | Worst | Overlaps | Runtime |
 |------|------|---------------|------|-------|----------|---------|
 | — | RePlAce (baseline) | **1.4578** | 0.9976 | 1.8370 | 0 | — |
+| 1 | Will (Partcl) | **1.5338** | 1.1625 | 1.7965 | 0 | 35s |
 | — | SA (baseline) | 2.1251 | 1.3166 | 3.6726 | 0 | — |
 | — | Greedy Row (demo) | 2.2109 | 1.6728 | 2.7696 | 0 | 0.3s |
 
