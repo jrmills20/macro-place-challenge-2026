@@ -202,7 +202,7 @@ def visualize_placement(
         )
 
     # Draw net connections as star topology (average center → each pin)
-    if plc is not None and hasattr(plc, "nets"):
+    if plc is not None:
         from matplotlib.collections import LineCollection
 
         lines = []
