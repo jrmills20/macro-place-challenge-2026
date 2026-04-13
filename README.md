@@ -225,7 +225,7 @@ Submissions are ranked by **average proxy cost** across all 17 IBM benchmarks (l
 | Rank | Team | Avg Proxy Cost | Best | Worst | Overlaps | Runtime | Verified |
 |------|------|---------------|------|-------|----------|---------|----------|
 | 1 | "Mike Gao" (autoresearch) | **1.3255** | — | — | 0 | 16min/bench | |
-| 2 | "MTK" (DreamPlace++) | **1.3622** | 1.0040 | 1.6710 | 0 | 112s/bench (GPU) | :white_check_mark: |
+| 2 | "MTK" (DreamPlace++) | **1.3622**\* | 1.0040 | 1.6710 | 0 | 112s/bench (GPU) | :white_check_mark: |
 | 3 | "Electric Beatel" (ePlace-Lite) | **1.3913** | 0.9773 | 1.7253 | 0 | 155s/bench (GPU) | :white_check_mark: |
 | 4 | "Varun's Parallel Worlds" (GRPlace) | **1.4017** | 1.0362 | 1.7298 | 0 | 27s/bench | :white_check_mark: |
 | 5 | "UT Austin" - AS (DREAMPlace Analytical) | **1.4076** | — | — | 0 | 17s/bench | |
@@ -246,6 +246,8 @@ Submissions are ranked by **average proxy cost** across all 17 IBM benchmarks (l
 | — | Greedy Row (demo) | 2.2109 | 1.6728 | 2.7696 | 0 | 0.3s total | :white_check_mark: |
 | — | "Binghamton" (feng shui) | pending | — | — | — | — | |
 | — | "MacroBio" (Two-Opt Swap) | pending | — | — | — | — | |
+
+\*Verified score is better than self-reported (1.3998). Likely due to faster GPU on evaluation hardware.
 
 *Submit your results via the [Submission Link](https://forms.gle/YDRtYV5Vq68SZgKW9)!*
 
