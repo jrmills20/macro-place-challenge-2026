@@ -225,7 +225,7 @@ Submissions are ranked by **average proxy cost** across all 17 IBM benchmarks (l
 | Rank | Team | Avg Proxy Cost | Best | Worst | Overlaps | Runtime | Verified |
 |------|------|---------------|------|-------|----------|---------|----------|
 | 1 | "Mike Gao" (autoresearch) | **1.3255** | — | — | 0 | 16min/bench | |
-| 2 | "Electric Beatel" (ePlace-Lite) | **1.3874** | — | — | 0 | 283s/bench (GPU) | |
+| 2 | "Electric Beatel" (ePlace-Lite) | **1.3913** | 0.9773 | 1.7253 | 0 | 155s/bench (GPU) | :white_check_mark: |
 | 3 | "MTK" (DreamPlace++) | **1.3998** | — | — | 0 | 25s/bench | |
 | 4 | "Varun's Parallel Worlds" (GRPlace) | **1.4017** | 1.0362 | 1.7298 | 0 | 27s/bench | :white_check_mark: |
 | 5 | "UT Austin" - AS (DREAMPlace Analytical) | **1.4076** | — | — | 0 | 17s/bench | |
