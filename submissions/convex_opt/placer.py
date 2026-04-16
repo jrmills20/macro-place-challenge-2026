@@ -58,10 +58,6 @@ class ConvexOptPlacer:
         self.lambda_anchor = lambda_anchor
         self.sa_iters = sa_iters
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def place(self, benchmark: Benchmark) -> torch.Tensor:
         torch.manual_seed(self.seed)
         random.seed(self.seed)
@@ -70,10 +66,12 @@ class ConvexOptPlacer:
         n_hard = benchmark.num_hard_macros
         n_total = benchmark.num_macros
 
-        pos = benchmark.macro_positions.numpy().copy().astype(np.float64)  # [n_total, 2]
-        sizes = benchmark.macro_sizes.numpy().astype(np.float64)           # [n_total, 2]
-        fixed_mask = benchmark.macro_fixed.numpy()                          # [n_total] bool
-        port_pos = benchmark.port_positions.numpy().astype(np.float64)     # [n_ports, 2]
+        pos = (
+            benchmark.macro_positions.numpy().copy().astype(np.float64)
+        )  # [n_total, 2]
+        sizes = benchmark.macro_sizes.numpy().astype(np.float64)  # [n_total, 2]
+        fixed_mask = benchmark.macro_fixed.numpy()  # [n_total] bool
+        port_pos = benchmark.port_positions.numpy().astype(np.float64)  # [n_ports, 2]
 
         cw = float(benchmark.canvas_width)
         ch = float(benchmark.canvas_height)
@@ -83,45 +81,62 @@ class ConvexOptPlacer:
         movable = np.zeros(n_total, dtype=bool)
         movable[:n_hard] = ~fixed_mask[:n_hard]
 
-        # --- Stage 1: QP solve with multiple lambda values ---
+        #  QP solve with multiple lambda values
         # Try a range of anchor strengths. Higher lambda = smaller QP displacement,
         # closer to initial positions. We legalize each candidate and compare.
         candidates = []
         for lam in [30.0, 100.0, 400.0]:
             self.lambda_anchor = lam
-            pos_cand = self._qp_solve(pos.copy(), movable, sizes, benchmark, n_total, port_pos, cw, ch)
-            pos_cand[:n_hard] = self._legalize(
-                pos_cand[:n_hard].copy(), ~fixed_mask[:n_hard], sizes[:n_hard], cw, ch,
+            pos_cand = self._qp_solve(
+                pos.copy(), movable, sizes, benchmark, n_total, port_pos, cw, ch
             )
-            candidates.append((self._fast_proxy(pos_cand, benchmark, n_total, port_pos), pos_cand))
+            pos_cand[:n_hard] = self._legalize(
+                pos_cand[:n_hard].copy(),
+                ~fixed_mask[:n_hard],
+                sizes[:n_hard],
+                cw,
+                ch,
+            )
+            candidates.append(
+                (self._fast_proxy(pos_cand, benchmark, n_total, port_pos), pos_cand)
+            )
         self.lambda_anchor = 30.0  # restore default
 
-        # --- Stage 2: Also legalize the initial positions as a fallback ---
+        # Also legalize the initial positions as a fallback
         pos_init_legal = pos.copy()
         pos_init_legal[:n_hard] = self._legalize(
-            pos[:n_hard].copy(), ~fixed_mask[:n_hard], sizes[:n_hard], cw, ch,
+            pos[:n_hard].copy(),
+            ~fixed_mask[:n_hard],
+            sizes[:n_hard],
+            cw,
+            ch,
         )
-        candidates.append((self._fast_proxy(pos_init_legal, benchmark, n_total, port_pos), pos_init_legal))
+        candidates.append(
+            (
+                self._fast_proxy(pos_init_legal, benchmark, n_total, port_pos),
+                pos_init_legal,
+            )
+        )
 
         # Pick the candidate with lowest approximate proxy cost
         pos = min(candidates, key=lambda c: c[0])[1]
 
-        # --- Stage 3: SA refinement (optional) ---
+        # SA refinement
         if self.sa_iters > 0:
             pos[:n_hard] = self._sa_refine(
                 pos[:n_hard].copy(),
                 ~fixed_mask[:n_hard],
                 sizes[:n_hard],
                 benchmark,
-                n_hard, n_total,
-                cw, ch,
+                n_hard,
+                n_total,
+                cw,
+                ch,
             )
 
         return torch.tensor(pos, dtype=torch.float32)
 
-    # ------------------------------------------------------------------
     # Fast proxy cost (for conservative fallback comparison)
-    # ------------------------------------------------------------------
 
     def _fast_proxy(self, pos, benchmark, n_total, port_pos):
         """
@@ -200,9 +215,7 @@ class ConvexOptPlacer:
         thresh = int(0.9 * len(density_grid))
         return float(density_grid[thresh:].mean())
 
-    # ------------------------------------------------------------------
-    # Stage 1: Quadratic Placement
-    # ------------------------------------------------------------------
+    # Quadratic Placement
 
     def _qp_solve(self, pos, movable, sizes, benchmark, n_total, port_pos, cw, ch):
         """
@@ -246,9 +259,7 @@ class ConvexOptPlacer:
                 # Full clique, total weight = w
                 ew = 2.0 * w / (k * (k - 1))
                 edges = [
-                    (nodes[a], nodes[b], ew)
-                    for a in range(k)
-                    for b in range(a + 1, k)
+                    (nodes[a], nodes[b], ew) for a in range(k) for b in range(a + 1, k)
                 ]
 
             for ni, nj, pw in edges:
@@ -319,9 +330,7 @@ class ConvexOptPlacer:
             return port_pos[p, 0], port_pos[p, 1]
         return 0.0, 0.0
 
-    # ------------------------------------------------------------------
-    # Stage 2: Legalization
-    # ------------------------------------------------------------------
+    # Legalization
 
     def _legalize(self, pos, movable, sizes, cw, ch):
         """
@@ -367,12 +376,20 @@ class ConvexOptPlacer:
                     for dyr in range(-r, r + 1):
                         if abs(dxr) != r and abs(dyr) != r:
                             continue  # Only ring perimeter
-                        cx = np.clip(pos[idx, 0] + dxr * step, half_w[idx], cw - half_w[idx])
-                        cy = np.clip(pos[idx, 1] + dyr * step, half_h[idx], ch - half_h[idx])
+                        cx = np.clip(
+                            pos[idx, 0] + dxr * step, half_w[idx], cw - half_w[idx]
+                        )
+                        cy = np.clip(
+                            pos[idx, 1] + dyr * step, half_h[idx], ch - half_h[idx]
+                        )
                         if placed.any():
                             dx = np.abs(cx - legal[:, 0])
                             dy = np.abs(cy - legal[:, 1])
-                            c = (dx < sep_x[idx] + 0.05) & (dy < sep_y[idx] + 0.05) & placed
+                            c = (
+                                (dx < sep_x[idx] + 0.05)
+                                & (dy < sep_y[idx] + 0.05)
+                                & placed
+                            )
                             c[idx] = False
                             if c.any():
                                 continue
@@ -389,9 +406,7 @@ class ConvexOptPlacer:
 
         return legal
 
-    # ------------------------------------------------------------------
-    # Stage 3: SA Refinement
-    # ------------------------------------------------------------------
+    # SA Refinement
 
     def _sa_refine(self, pos, movable, sizes, benchmark, n_hard, n_total, cw, ch):
         """
@@ -436,8 +451,8 @@ class ConvexOptPlacer:
         if not edge_dict:
             return pos
 
-        edges = np.array(list(edge_dict.keys()), dtype=np.int32)   # [E, 2]
-        ew = np.array(list(edge_dict.values()), dtype=np.float64)   # [E]
+        edges = np.array(list(edge_dict.keys()), dtype=np.int32)  # [E, 2]
+        ew = np.array(list(edge_dict.values()), dtype=np.float64)  # [E]
 
         # Neighbor list for connectivity-biased moves
         neighbors: list = [[] for _ in range(n_hard)]
@@ -476,14 +491,22 @@ class ConvexOptPlacer:
             if move_type < 0.45:
                 # Shift: Gaussian displacement scaled by temperature
                 sigma = T * (0.2 + 0.8 * (1 - frac))
-                pos[i, 0] = np.clip(ox + random.gauss(0, sigma), half_w[i], cw - half_w[i])
-                pos[i, 1] = np.clip(oy + random.gauss(0, sigma), half_h[i], ch - half_h[i])
+                pos[i, 0] = np.clip(
+                    ox + random.gauss(0, sigma), half_w[i], cw - half_w[i]
+                )
+                pos[i, 1] = np.clip(
+                    oy + random.gauss(0, sigma), half_h[i], ch - half_h[i]
+                )
 
             elif move_type < 0.75:
                 # Swap: exchange positions (prefer connected neighbors)
                 if neighbors[i] and random.random() < 0.7:
                     cands = [j for j in neighbors[i] if movable[j]]
-                    j = int(random.choice(cands)) if cands else int(random.choice(movable_idx))
+                    j = (
+                        int(random.choice(cands))
+                        if cands
+                        else int(random.choice(movable_idx))
+                    )
                 else:
                     j = int(random.choice(movable_idx))
 
@@ -496,8 +519,10 @@ class ConvexOptPlacer:
                 pos[j, 1] = np.clip(oy, half_h[j], ch - half_h[j])
 
                 if has_overlap(i) or has_overlap(j):
-                    pos[i, 0] = ox;  pos[i, 1] = oy
-                    pos[j, 0] = ojx; pos[j, 1] = ojy
+                    pos[i, 0] = ox
+                    pos[i, 1] = oy
+                    pos[j, 0] = ojx
+                    pos[j, 1] = ojy
                     continue
 
                 new_cost = wl_cost()
@@ -508,8 +533,10 @@ class ConvexOptPlacer:
                         best_cost = current_cost
                         best_pos = pos.copy()
                 else:
-                    pos[i, 0] = ox;  pos[i, 1] = oy
-                    pos[j, 0] = ojx; pos[j, 1] = ojy
+                    pos[i, 0] = ox
+                    pos[i, 1] = oy
+                    pos[j, 0] = ojx
+                    pos[j, 1] = ojy
                 continue
 
             else:
@@ -518,8 +545,12 @@ class ConvexOptPlacer:
                     continue
                 j = int(random.choice(neighbors[i]))
                 alpha = random.uniform(0.05, 0.35)
-                pos[i, 0] = np.clip(ox + alpha * (pos[j, 0] - ox), half_w[i], cw - half_w[i])
-                pos[i, 1] = np.clip(oy + alpha * (pos[j, 1] - oy), half_h[i], ch - half_h[i])
+                pos[i, 0] = np.clip(
+                    ox + alpha * (pos[j, 0] - ox), half_w[i], cw - half_w[i]
+                )
+                pos[i, 1] = np.clip(
+                    oy + alpha * (pos[j, 1] - oy), half_h[i], ch - half_h[i]
+                )
 
             # Overlap check for shift/pull moves
             if has_overlap(i):
