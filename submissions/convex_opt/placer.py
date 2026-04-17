@@ -411,29 +411,56 @@ class ConvexOptPlacer:
                 if found_ring:
                     break
 
-            # ── Phase 2: fine-grained local refinement ───────────────────────
-            # Scan a dense grid within ±step_c of the best coarse position.
-            # This finds the true nearest legal point on a sub-coarse grid.
+            # ── Phase 2: vectorised fine-grained refinement ─────────────────
+            # Build a dense grid within ±step_c of the best coarse position
+            # and check all grid points at once via numpy broadcast, which is
+            # O(n_pts × n_placed) instead of O(n_pts × n_placed) Python calls.
+            # This is critical for large benchmarks where Phase 2 was the
+            # dominant cost.
             step_f = max(min(sizes[idx, 0], sizes[idx, 1]) * 0.08, 0.03)
             x_lo = max(half_w[idx],      best_p[0] - step_c)
             x_hi = min(cw - half_w[idx], best_p[0] + step_c)
             y_lo = max(half_h[idx],      best_p[1] - step_c)
             y_hi = min(ch - half_h[idx], best_p[1] + step_c)
 
-            # Cap fine grid to ≤ 40 × 40 points to bound runtime
             n_x = min(40, max(1, int((x_hi - x_lo) / step_f) + 1))
             n_y = min(40, max(1, int((y_hi - y_lo) / step_f) + 1))
-            xs = np.linspace(x_lo, x_hi, n_x)
-            ys = np.linspace(y_lo, y_hi, n_y)
+            gx = np.linspace(x_lo, x_hi, n_x)
+            gy = np.linspace(y_lo, y_hi, n_y)
+            gx2, gy2 = np.meshgrid(gx, gy)  # both [n_y, n_x]
+            pts_x = gx2.ravel()             # [n_pts]
+            pts_y = gy2.ravel()
 
-            for cx in xs:
-                for cy in ys:
-                    if not _no_conflict(cx, cy, idx):
-                        continue
-                    d = (cx - pos[idx, 0]) ** 2 + (cy - pos[idx, 1]) ** 2
-                    if d < best_d:
-                        best_d = d
-                        best_p = np.array([cx, cy])
+            # Placed macros, excluding self
+            pmask = placed.copy()
+            pmask[idx] = False
+            pidx = np.where(pmask)[0]
+
+            if len(pidx) == 0:
+                dists2 = (pts_x - pos[idx, 0]) ** 2 + (pts_y - pos[idx, 1]) ** 2
+                k = int(np.argmin(dists2))
+                if dists2[k] < best_d:
+                    best_p = np.array([pts_x[k], pts_y[k]])
+                    best_d = float(dists2[k])
+            else:
+                px_p = legal[pidx, 0]          # [n_placed]
+                py_p = legal[pidx, 1]
+                sx_p = sep_x[idx, pidx] + 0.05  # [n_placed]
+                sy_p = sep_y[idx, pidx] + 0.05
+
+                # [n_pts, n_placed] conflict matrix, fully vectorised
+                dx2d = np.abs(pts_x[:, np.newaxis] - px_p[np.newaxis, :])
+                dy2d = np.abs(pts_y[:, np.newaxis] - py_p[np.newaxis, :])
+                valid = ~((dx2d < sx_p) & (dy2d < sy_p)).any(axis=1)  # [n_pts]
+
+                if valid.any():
+                    vx = pts_x[valid]
+                    vy = pts_y[valid]
+                    dists2 = (vx - pos[idx, 0]) ** 2 + (vy - pos[idx, 1]) ** 2
+                    k = int(np.argmin(dists2))
+                    if dists2[k] < best_d:
+                        best_p = np.array([vx[k], vy[k]])
+                        best_d = float(dists2[k])
 
             legal[idx] = best_p
             placed[idx] = True
