@@ -563,9 +563,16 @@ set_output_delay -clock core_clock 0 [all_outputs]
             mp_util.write_text(mp_util_text)
             print(f"  ✓ Patched macro_place_util.tcl to support SKIP_RTLMP")
 
-        # Set SKIP_RTLMP in config (only when we're providing our own placement)
+        # Parse CORE_AREA from config.mk
+        core_area = None
         config_mk = design_dir / "config.mk"
         config_text = config_mk.read_text()
+        m = re.search(r'CORE_AREA\s*=\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)', config_text)
+        if m:
+            core_area = tuple(float(x) for x in m.groups())
+            print(f"  ✓ Parsed CORE_AREA: {core_area}")
+
+        # Set SKIP_RTLMP in config (only when we're providing our own placement)
         if placement_path is not None and 'SKIP_RTLMP' not in config_text:
             config_text += '\nexport SKIP_RTLMP = 1\n'
             config_mk.write_text(config_text)
@@ -585,14 +592,6 @@ set_output_delay -clock core_clock 0 [all_outputs]
                 )
             config_mk.write_text(config_text)
             print(f"  ✓ Baseline mode: letting ORFS rtl_macro_placer handle placement")
-
-        # Parse CORE_AREA from config.mk and regenerate TCL with clamping
-        core_area = None
-        config_text = (design_dir / "config.mk").read_text()
-        m = re.search(r'CORE_AREA\s*=\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)', config_text)
-        if m:
-            core_area = tuple(float(x) for x in m.groups())
-            print(f"  ✓ Parsed CORE_AREA: {core_area}")
 
         # Regenerate TCL with core_area clamping
         write_orfs_macro_placement(placement, benchmark, plc, str(tcl_file), core_area=core_area, use_genus_names=_using_genus_netlist)
