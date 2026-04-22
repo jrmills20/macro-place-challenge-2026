@@ -46,15 +46,21 @@ class ConvexOptPlacer:
     seed : int
         Random seed for reproducibility.
     lambda_anchor : float
-        Spring constant for the anchor term (fraction of mean Laplacian diagonal).
+        Spring constant for the anchor term.
         Keeps the QP well-conditioned and pulls macros toward their initial
         positions when few fixed-position nodes exist.
     sa_iters : int
         Number of SA refinement steps after legalization.
     """
 
-    def __init__(self, seed: int = 42, lambda_anchor: float = 30.0, sa_iters: int = 200_000,
-                 grad_steps: int = 0, sa_density_weight: float = 0.5):
+    def __init__(
+        self,
+        seed: int = 42,
+        lambda_anchor: float = 30.0,
+        sa_iters: int = 200_000,
+        grad_steps: int = 0,
+        sa_density_weight: float = 0.5,
+    ):
         self.seed = seed
         self.lambda_anchor = lambda_anchor
         self.sa_iters = sa_iters
@@ -80,7 +86,7 @@ class ConvexOptPlacer:
         ch = float(benchmark.canvas_height)
 
         # Movable: non-fixed hard macros only.
-        # Soft macros stay at their initial positions (already co-optimized).
+        # Soft macros stay at their initial positions.
         movable = np.zeros(n_total, dtype=bool)
         movable[:n_hard] = ~fixed_mask[:n_hard]
 
@@ -90,7 +96,14 @@ class ConvexOptPlacer:
             for lam in lambdas:
                 self.lambda_anchor = lam
                 p = self._qp_solve(
-                    anchor_pos.copy(), movable, sizes, benchmark, n_total, port_pos, cw, ch
+                    anchor_pos.copy(),
+                    movable,
+                    sizes,
+                    benchmark,
+                    n_total,
+                    port_pos,
+                    cw,
+                    ch,
                 )
                 p[:n_hard] = self._legalize(
                     p[:n_hard].copy(), ~fixed_mask[:n_hard], sizes[:n_hard], cw, ch
@@ -99,7 +112,7 @@ class ConvexOptPlacer:
             self.lambda_anchor = 30.0
             return cands
 
-        # Round 1: try a range of anchor strengths from the initial positions.
+        # Try a range of anchor strengths from the initial positions.
         candidates = _qp_legalize_candidates(pos, [30.0, 100.0, 400.0])
 
         # Also legalize the initial positions as a fallback.
@@ -108,15 +121,17 @@ class ConvexOptPlacer:
             pos[:n_hard].copy(), ~fixed_mask[:n_hard], sizes[:n_hard], cw, ch
         )
         candidates.append(
-            (self._fast_proxy(pos_init_legal, benchmark, n_total, port_pos), pos_init_legal)
+            (
+                self._fast_proxy(pos_init_legal, benchmark, n_total, port_pos),
+                pos_init_legal,
+            )
         )
 
         best_cost, best_pos = min(candidates, key=lambda c: c[0])
 
-        # Iterative refinement: use the best legal positions as the new anchor
+        # Use the best legal positions as the new anchor
         # and re-run QP.  Each iteration, QP finds a WL minimum near a legal
-        # solution, then legalization nudges it back to feasibility — this
-        # feedback loop steadily improves quality.
+        # solution, then legalization nudges it back to feasibility
         for _ in range(2):
             new_cands = _qp_legalize_candidates(best_pos, [30.0, 100.0, 400.0])
             new_cost, new_pos = min(new_cands, key=lambda c: c[0])
@@ -124,7 +139,7 @@ class ConvexOptPlacer:
                 best_cost = new_cost
                 best_pos = new_pos
             else:
-                break  # no improvement — stop early
+                break  # no improvement, stop early
 
         pos = best_pos
 
@@ -170,7 +185,7 @@ class ConvexOptPlacer:
 
         return torch.tensor(pos, dtype=torch.float32)
 
-    # Fast proxy cost (for conservative fallback comparison)
+    # Fast proxy cost
 
     def _fast_proxy(self, pos, benchmark, n_total, port_pos):
         """
@@ -185,7 +200,7 @@ class ConvexOptPlacer:
         return wl + 0.5 * density
 
     def _fast_hpwl(self, pos, benchmark, n_total, port_pos):
-        """Normalized HPWL over all nets — same normalization as plc.get_cost():
+        """Normalized HPWL over all nets, same normalization as plc.get_cost():
         total_wirelength / ((canvas_width + canvas_height) * net_count).
         """
         norm = (benchmark.canvas_width + benchmark.canvas_height) * benchmark.num_nets
@@ -261,9 +276,8 @@ class ConvexOptPlacer:
         For each net with nodes [n1, n2, ...] (hard macros, soft macros, ports):
         - Expand to weighted edges via clique (or star for large nets)
         - Build Laplacian L partitioned into movable (m) and fixed (f)
-        - Solve: (L_mm + λI) x_m = Σ_{j fixed} w_ij * x_j + λ * x_m0
 
-        The spring term λI handles:
+        The spring term handles:
         - Near-singular systems (few fixed nodes)
         - Keeps macros near their initial positions as a prior
         """
@@ -274,7 +288,7 @@ class ConvexOptPlacer:
 
         mov_map = {int(idx): i for i, idx in enumerate(movable_idx)}
 
-        # Dense Laplacian for movable macros (n_mov <= ~540, trivially small)
+        # Dense Laplacian for movable macros
         L_mm = np.zeros((n_mov, n_mov), dtype=np.float64)
         # Accumulate L_mf * x_f and L_mf * y_f directly
         rhs_x = np.zeros(n_mov, dtype=np.float64)
@@ -421,10 +435,12 @@ class ConvexOptPlacer:
                     for dyr in range(-r, r + 1):
                         if abs(dxr) != r and abs(dyr) != r:
                             continue
-                        cx = np.clip(pos[idx, 0] + dxr * step_c,
-                                     half_w[idx], cw - half_w[idx])
-                        cy = np.clip(pos[idx, 1] + dyr * step_c,
-                                     half_h[idx], ch - half_h[idx])
+                        cx = np.clip(
+                            pos[idx, 0] + dxr * step_c, half_w[idx], cw - half_w[idx]
+                        )
+                        cy = np.clip(
+                            pos[idx, 1] + dyr * step_c, half_h[idx], ch - half_h[idx]
+                        )
                         if not _no_conflict(cx, cy, idx):
                             continue
                         d = (cx - pos[idx, 0]) ** 2 + (cy - pos[idx, 1]) ** 2
@@ -442,9 +458,9 @@ class ConvexOptPlacer:
             # This is critical for large benchmarks where Phase 2 was the
             # dominant cost.
             step_f = max(min(sizes[idx, 0], sizes[idx, 1]) * 0.08, 0.03)
-            x_lo = max(half_w[idx],      best_p[0] - step_c)
+            x_lo = max(half_w[idx], best_p[0] - step_c)
             x_hi = min(cw - half_w[idx], best_p[0] + step_c)
-            y_lo = max(half_h[idx],      best_p[1] - step_c)
+            y_lo = max(half_h[idx], best_p[1] - step_c)
             y_hi = min(ch - half_h[idx], best_p[1] + step_c)
 
             n_x = min(40, max(1, int((x_hi - x_lo) / step_f) + 1))
@@ -452,7 +468,7 @@ class ConvexOptPlacer:
             gx = np.linspace(x_lo, x_hi, n_x)
             gy = np.linspace(y_lo, y_hi, n_y)
             gx2, gy2 = np.meshgrid(gx, gy)  # both [n_y, n_x]
-            pts_x = gx2.ravel()             # [n_pts]
+            pts_x = gx2.ravel()  # [n_pts]
             pts_y = gy2.ravel()
 
             # Placed macros, excluding self
@@ -467,7 +483,7 @@ class ConvexOptPlacer:
                     best_p = np.array([pts_x[k], pts_y[k]])
                     best_d = float(dists2[k])
             else:
-                px_p = legal[pidx, 0]          # [n_placed]
+                px_p = legal[pidx, 0]  # [n_placed]
                 py_p = legal[pidx, 1]
                 sx_p = sep_x[idx, pidx] + 0.05  # [n_placed]
                 sy_p = sep_y[idx, pidx] + 0.05
@@ -493,7 +509,9 @@ class ConvexOptPlacer:
 
     # SA Refinement
 
-    def _sa_refine(self, pos, movable, sizes, benchmark, n_hard, n_total, port_pos, cw, ch):
+    def _sa_refine(
+        self, pos, movable, sizes, benchmark, n_hard, n_total, port_pos, cw, ch
+    ):
         """
         Simulated annealing on combined WL + density cost.
 
@@ -526,7 +544,7 @@ class ConvexOptPlacer:
         # adj_fixed[i] = list of (fixed_x, fixed_y, weight)     — immovable ends
 
         all_macro_pos = benchmark.macro_positions.numpy().astype(np.float64)
-        adj_hard:  list = [[] for _ in range(n_hard)]  # (j, w) pairs
+        adj_hard: list = [[] for _ in range(n_hard)]  # (j, w) pairs
         adj_fixed: list = [[] for _ in range(n_hard)]  # (x, y, w) triples
 
         for net_i, nodes_tensor in enumerate(benchmark.net_nodes):
@@ -581,9 +599,9 @@ class ConvexOptPlacer:
                         adj_fixed[ni].append((fx, fy, ew))
 
         # Collapse into numpy arrays per macro for fast vectorised delta computation
-        macro_hard_j:  list = []   # macro_hard_j[i]  = int32 array of hard neighbours
-        macro_hard_w:  list = []   # macro_hard_w[i]  = float64 weights
-        macro_fixed_x: list = []   # macro_fixed_x[i] = float64 array of fixed x coords
+        macro_hard_j: list = []  # macro_hard_j[i]  = int32 array of hard neighbours
+        macro_hard_w: list = []  # macro_hard_w[i]  = float64 weights
+        macro_fixed_x: list = []  # macro_fixed_x[i] = float64 array of fixed x coords
         macro_fixed_y: list = []
         macro_fixed_w: list = []
 
@@ -624,16 +642,30 @@ class ConvexOptPlacer:
                 js = macro_hard_j[i]
                 ox_arr = pos[js, 0]
                 oy_arr = pos[js, 1]
-                delta += float((macro_hard_w[i] * (
-                    np.abs(nx - ox_arr) + np.abs(ny - oy_arr) -
-                    np.abs(ox - ox_arr) - np.abs(oy - oy_arr)
-                )).sum())
+                delta += float(
+                    (
+                        macro_hard_w[i]
+                        * (
+                            np.abs(nx - ox_arr)
+                            + np.abs(ny - oy_arr)
+                            - np.abs(ox - ox_arr)
+                            - np.abs(oy - oy_arr)
+                        )
+                    ).sum()
+                )
             # Fixed endpoints of i
             if len(macro_fixed_x[i]):
-                delta += float((macro_fixed_w[i] * (
-                    np.abs(nx - macro_fixed_x[i]) + np.abs(ny - macro_fixed_y[i]) -
-                    np.abs(ox - macro_fixed_x[i]) - np.abs(oy - macro_fixed_y[i])
-                )).sum())
+                delta += float(
+                    (
+                        macro_fixed_w[i]
+                        * (
+                            np.abs(nx - macro_fixed_x[i])
+                            + np.abs(ny - macro_fixed_y[i])
+                            - np.abs(ox - macro_fixed_x[i])
+                            - np.abs(oy - macro_fixed_y[i])
+                        )
+                    ).sum()
+                )
             return delta
 
         def delta_swap_wl(i, j, ox_i, oy_i, ox_j, oy_j) -> float:
@@ -642,31 +674,61 @@ class ConvexOptPlacer:
             nx_j, ny_j = pos[j, 0], pos[j, 1]
             delta = 0.0
             if len(macro_hard_j[i]):
-                js = macro_hard_j[i]; mask = js != j
+                js = macro_hard_j[i]
+                mask = js != j
                 js_f, w_f = js[mask], macro_hard_w[i][mask]
                 if len(js_f):
-                    delta += float((w_f * (
-                        np.abs(nx_i - pos[js_f, 0]) + np.abs(ny_i - pos[js_f, 1]) -
-                        np.abs(ox_i - pos[js_f, 0]) - np.abs(oy_i - pos[js_f, 1])
-                    )).sum())
+                    delta += float(
+                        (
+                            w_f
+                            * (
+                                np.abs(nx_i - pos[js_f, 0])
+                                + np.abs(ny_i - pos[js_f, 1])
+                                - np.abs(ox_i - pos[js_f, 0])
+                                - np.abs(oy_i - pos[js_f, 1])
+                            )
+                        ).sum()
+                    )
             if len(macro_fixed_x[i]):
-                delta += float((macro_fixed_w[i] * (
-                    np.abs(nx_i - macro_fixed_x[i]) + np.abs(ny_i - macro_fixed_y[i]) -
-                    np.abs(ox_i - macro_fixed_x[i]) - np.abs(oy_i - macro_fixed_y[i])
-                )).sum())
+                delta += float(
+                    (
+                        macro_fixed_w[i]
+                        * (
+                            np.abs(nx_i - macro_fixed_x[i])
+                            + np.abs(ny_i - macro_fixed_y[i])
+                            - np.abs(ox_i - macro_fixed_x[i])
+                            - np.abs(oy_i - macro_fixed_y[i])
+                        )
+                    ).sum()
+                )
             if len(macro_hard_j[j]):
-                js = macro_hard_j[j]; mask = js != i
+                js = macro_hard_j[j]
+                mask = js != i
                 js_f, w_f = js[mask], macro_hard_w[j][mask]
                 if len(js_f):
-                    delta += float((w_f * (
-                        np.abs(nx_j - pos[js_f, 0]) + np.abs(ny_j - pos[js_f, 1]) -
-                        np.abs(ox_j - pos[js_f, 0]) - np.abs(oy_j - pos[js_f, 1])
-                    )).sum())
+                    delta += float(
+                        (
+                            w_f
+                            * (
+                                np.abs(nx_j - pos[js_f, 0])
+                                + np.abs(ny_j - pos[js_f, 1])
+                                - np.abs(ox_j - pos[js_f, 0])
+                                - np.abs(oy_j - pos[js_f, 1])
+                            )
+                        ).sum()
+                    )
             if len(macro_fixed_x[j]):
-                delta += float((macro_fixed_w[j] * (
-                    np.abs(nx_j - macro_fixed_x[j]) + np.abs(ny_j - macro_fixed_y[j]) -
-                    np.abs(ox_j - macro_fixed_x[j]) - np.abs(oy_j - macro_fixed_y[j])
-                )).sum())
+                delta += float(
+                    (
+                        macro_fixed_w[j]
+                        * (
+                            np.abs(nx_j - macro_fixed_x[j])
+                            + np.abs(ny_j - macro_fixed_y[j])
+                            - np.abs(ox_j - macro_fixed_x[j])
+                            - np.abs(oy_j - macro_fixed_y[j])
+                        )
+                    ).sum()
+                )
             return delta
 
         def has_overlap(idx):
@@ -705,19 +767,26 @@ class ConvexOptPlacer:
                 if oy_ <= 0:
                     continue
                 for c in range(c_s, c_e + 1):
-                    ox_ = max(0.0, min(xr_, (c + 1) * cell_w_d) - max(xl_, c * cell_w_d))
+                    ox_ = max(
+                        0.0, min(xr_, (c + 1) * cell_w_d) - max(xl_, c * cell_w_d)
+                    )
                     if ox_ > 0:
                         result.append((r * cols_d + c, ox_ * oy_ / cell_area_d))
             return result
 
         density_grid = np.zeros(rows_d * cols_d, dtype=np.float64)
-        for i_sm in range(n_hard, benchmark.num_macros):   # soft macros (fixed)
-            for cell, frac in _cells(all_macro_pos[i_sm, 0], all_macro_pos[i_sm, 1],
-                                     all_sizes_d[i_sm, 0], all_sizes_d[i_sm, 1]):
+        for i_sm in range(n_hard, benchmark.num_macros):  # soft macros (fixed)
+            for cell, frac in _cells(
+                all_macro_pos[i_sm, 0],
+                all_macro_pos[i_sm, 1],
+                all_sizes_d[i_sm, 0],
+                all_sizes_d[i_sm, 1],
+            ):
                 density_grid[cell] += frac
-        for i_hm in range(n_hard):                         # hard macros (current pos)
-            for cell, frac in _cells(pos[i_hm, 0], pos[i_hm, 1],
-                                     sizes[i_hm, 0], sizes[i_hm, 1]):
+        for i_hm in range(n_hard):  # hard macros (current pos)
+            for cell, frac in _cells(
+                pos[i_hm, 0], pos[i_hm, 1], sizes[i_hm, 0], sizes[i_hm, 1]
+            ):
                 density_grid[cell] += frac
 
         def _dens_changes(x_old, y_old, x_new, y_new, mw, mh):
@@ -734,7 +803,7 @@ class ConvexOptPlacer:
             d = 0.0
             for cell, dc in ch_dict.items():
                 dg = density_grid[cell]
-                d += (dg + dc) ** 2 - dg ** 2
+                d += (dg + dc) ** 2 - dg**2
             return d
 
         def _apply_changes(ch_dict):
@@ -757,18 +826,18 @@ class ConvexOptPlacer:
         v_cap = float(benchmark.vroutes_per_micron) * cell_h_d  # tracks per cell (v)
 
         # Per routing-net arrays (indexed 0..n_rnets-1)
-        rn_hard  = []   # list of int arrays: hard-macro indices in this net
-        rn_fx    = []   # list of float arrays: fixed endpoint x coords
-        rn_fy    = []   # list of float arrays: fixed endpoint y coords
-        rn_wt    = []   # list of float weights
-        rn_bbox  = []   # list of [xl, xr, yl, yr] (mutable)
+        rn_hard = []  # list of int arrays: hard-macro indices in this net
+        rn_fx = []  # list of float arrays: fixed endpoint x coords
+        rn_fy = []  # list of float arrays: fixed endpoint y coords
+        rn_wt = []  # list of float weights
+        rn_bbox = []  # list of [xl, xr, yl, yr] (mutable)
 
         macro_to_rn = [[] for _ in range(n_hard)]  # macro_to_rn[i] = [rn_idx, ...]
 
         for net_i, nodes_tensor in enumerate(benchmark.net_nodes):
-            raw   = [int(n) for n in nodes_tensor.numpy()]
+            raw = [int(n) for n in nodes_tensor.numpy()]
             w_net = float(benchmark.net_weights[net_i])
-            hn    = [n for n in raw if n < n_hard]
+            hn = [n for n in raw if n < n_hard]
             if not hn:
                 continue  # no hard macros → bbox never changes
 
@@ -789,15 +858,15 @@ class ConvexOptPlacer:
             rn_fx.append(np.array(fx))
             rn_fy.append(np.array(fy))
             rn_wt.append(w_net)
-            rn_bbox.append([0., 0., 0., 0.])   # filled below
+            rn_bbox.append([0.0, 0.0, 0.0, 0.0])  # filled below
             for hi in hn:
                 macro_to_rn[hi].append(rn_idx)
 
         def _rn_current_bbox(rn_idx):
             """Recompute bounding box of routing net from current hard-macro positions."""
-            hn  = rn_hard[rn_idx]
-            xs  = list(pos[hn, 0])
-            ys  = list(pos[hn, 1])
+            hn = rn_hard[rn_idx]
+            xs = list(pos[hn, 0])
+            ys = list(pos[hn, 1])
             if len(rn_fx[rn_idx]):
                 xs.extend(rn_fx[rn_idx])
                 ys.extend(rn_fy[rn_idx])
@@ -806,34 +875,45 @@ class ConvexOptPlacer:
         def _rudy_ch(xl, xr, yl, yr, xl2, xr2, yl2, yr2, w):
             """Change dict {cell: (dh, dv)} for one net's bbox change (old→new)."""
             ch = {}
-            dx  = max(xr  - xl,  cell_w_d); dy  = max(yr  - yl,  cell_h_d)
-            dx2 = max(xr2 - xl2, cell_w_d); dy2 = max(yr2 - yl2, cell_h_d)
-            h_rm = -w * cell_h_d / dy  / h_cap   # remove old
-            v_rm = -w * cell_w_d / dx  / v_cap
-            h_ad =  w * cell_h_d / dy2 / h_cap   # add new
-            v_ad =  w * cell_w_d / dx2 / v_cap
+            dx = max(xr - xl, cell_w_d)
+            dy = max(yr - yl, cell_h_d)
+            dx2 = max(xr2 - xl2, cell_w_d)
+            dy2 = max(yr2 - yl2, cell_h_d)
+            h_rm = -w * cell_h_d / dy / h_cap  # remove old
+            v_rm = -w * cell_w_d / dx / v_cap
+            h_ad = w * cell_h_d / dy2 / h_cap  # add new
+            v_ad = w * cell_w_d / dx2 / v_cap
             # Old bbox cells
-            c_s = max(0, int(xl  / cell_w_d)); c_e = min(cols_d-1, int(xr  / cell_w_d))
-            r_s = max(0, int(yl  / cell_h_d)); r_e = min(rows_d-1, int(yr  / cell_h_d))
-            for r in range(r_s, r_e+1):
-                for c in range(c_s, c_e+1):
-                    k = r*cols_d+c
-                    dh, dv = ch.get(k, (0., 0.))
-                    ch[k] = (dh+h_rm, dv+v_rm)
+            c_s = max(0, int(xl / cell_w_d))
+            c_e = min(cols_d - 1, int(xr / cell_w_d))
+            r_s = max(0, int(yl / cell_h_d))
+            r_e = min(rows_d - 1, int(yr / cell_h_d))
+            for r in range(r_s, r_e + 1):
+                for c in range(c_s, c_e + 1):
+                    k = r * cols_d + c
+                    dh, dv = ch.get(k, (0.0, 0.0))
+                    ch[k] = (dh + h_rm, dv + v_rm)
             # New bbox cells
-            c_s = max(0, int(xl2 / cell_w_d)); c_e = min(cols_d-1, int(xr2 / cell_w_d))
-            r_s = max(0, int(yl2 / cell_h_d)); r_e = min(rows_d-1, int(yr2 / cell_h_d))
-            for r in range(r_s, r_e+1):
-                for c in range(c_s, c_e+1):
-                    k = r*cols_d+c
-                    dh, dv = ch.get(k, (0., 0.))
-                    ch[k] = (dh+h_ad, dv+v_ad)
+            c_s = max(0, int(xl2 / cell_w_d))
+            c_e = min(cols_d - 1, int(xr2 / cell_w_d))
+            r_s = max(0, int(yl2 / cell_h_d))
+            r_e = min(rows_d - 1, int(yr2 / cell_h_d))
+            for r in range(r_s, r_e + 1):
+                for c in range(c_s, c_e + 1):
+                    k = r * cols_d + c
+                    dh, dv = ch.get(k, (0.0, 0.0))
+                    ch[k] = (dh + h_ad, dv + v_ad)
             return ch
 
         def _delta_cong_sos(cong_ch):
-            d = 0.
+            d = 0.0
             for k, (dh, dv) in cong_ch.items():
-                d += (h_dem[k]+dh)**2 - h_dem[k]**2 + (v_dem[k]+dv)**2 - v_dem[k]**2
+                d += (
+                    (h_dem[k] + dh) ** 2
+                    - h_dem[k] ** 2
+                    + (v_dem[k] + dv) ** 2
+                    - v_dem[k] ** 2
+                )
             return d
 
         def _apply_cong(cong_ch):
@@ -847,44 +927,52 @@ class ConvexOptPlacer:
 
         # Fixed baseline: nets with no hard macros (purely soft+ports, never change)
         for net_i, nodes_tensor in enumerate(benchmark.net_nodes):
-            raw   = [int(n) for n in nodes_tensor.numpy()]
+            raw = [int(n) for n in nodes_tensor.numpy()]
             if any(n < n_hard for n in raw):
-                continue   # handled per-net below
+                continue  # handled per-net below
             w_net = float(benchmark.net_weights[net_i])
             xs, ys = [], []
             for n in raw:
                 if n < n_total:
-                    xs.append(float(all_macro_pos[n, 0])); ys.append(float(all_macro_pos[n, 1]))
+                    xs.append(float(all_macro_pos[n, 0]))
+                    ys.append(float(all_macro_pos[n, 1]))
                 else:
                     p = n - n_total
                     if p < len(port_pos):
-                        xs.append(float(port_pos[p, 0])); ys.append(float(port_pos[p, 1]))
+                        xs.append(float(port_pos[p, 0]))
+                        ys.append(float(port_pos[p, 1]))
             if len(xs) < 2:
                 continue
             xl, xr, yl, yr = min(xs), max(xs), min(ys), max(ys)
-            dx = max(xr-xl, cell_w_d); dy = max(yr-yl, cell_h_d)
+            dx = max(xr - xl, cell_w_d)
+            dy = max(yr - yl, cell_h_d)
             hc = w_net * cell_h_d / dy / h_cap
             vc = w_net * cell_w_d / dx / v_cap
-            c_s = max(0, int(xl/cell_w_d)); c_e = min(cols_d-1, int(xr/cell_w_d))
-            r_s = max(0, int(yl/cell_h_d)); r_e = min(rows_d-1, int(yr/cell_h_d))
-            for r in range(r_s, r_e+1):
-                for c in range(c_s, c_e+1):
-                    h_dem[r*cols_d+c] += hc
-                    v_dem[r*cols_d+c] += vc
+            c_s = max(0, int(xl / cell_w_d))
+            c_e = min(cols_d - 1, int(xr / cell_w_d))
+            r_s = max(0, int(yl / cell_h_d))
+            r_e = min(rows_d - 1, int(yr / cell_h_d))
+            for r in range(r_s, r_e + 1):
+                for c in range(c_s, c_e + 1):
+                    h_dem[r * cols_d + c] += hc
+                    v_dem[r * cols_d + c] += vc
 
         # Movable hard-macro nets: compute initial bboxes and add demand
         for rn_idx in range(len(rn_hard)):
             rn_bbox[rn_idx] = _rn_current_bbox(rn_idx)
             xl, xr, yl, yr = rn_bbox[rn_idx]
-            dx = max(xr-xl, cell_w_d); dy = max(yr-yl, cell_h_d)
+            dx = max(xr - xl, cell_w_d)
+            dy = max(yr - yl, cell_h_d)
             hc = rn_wt[rn_idx] * cell_h_d / dy / h_cap
             vc = rn_wt[rn_idx] * cell_w_d / dx / v_cap
-            c_s = max(0, int(xl/cell_w_d)); c_e = min(cols_d-1, int(xr/cell_w_d))
-            r_s = max(0, int(yl/cell_h_d)); r_e = min(rows_d-1, int(yr/cell_h_d))
-            for r in range(r_s, r_e+1):
-                for c in range(c_s, c_e+1):
-                    h_dem[r*cols_d+c] += hc
-                    v_dem[r*cols_d+c] += vc
+            c_s = max(0, int(xl / cell_w_d))
+            c_e = min(cols_d - 1, int(xr / cell_w_d))
+            r_s = max(0, int(yl / cell_h_d))
+            r_e = min(rows_d - 1, int(yr / cell_h_d))
+            for r in range(r_s, r_e + 1):
+                for c in range(c_s, c_e + 1):
+                    h_dem[r * cols_d + c] += hc
+                    v_dem[r * cols_d + c] += vc
 
         # ── Initialise combined cost ─────────────────────────────────────────
 
@@ -892,33 +980,48 @@ class ConvexOptPlacer:
         for i_c in range(n_hard):
             if len(macro_hard_j[i_c]):
                 js = macro_hard_j[i_c]
-                init_wl += float((macro_hard_w[i_c] * (
-                    np.abs(pos[i_c, 0] - pos[js, 0]) + np.abs(pos[i_c, 1] - pos[js, 1])
-                )).sum())
+                init_wl += float(
+                    (
+                        macro_hard_w[i_c]
+                        * (
+                            np.abs(pos[i_c, 0] - pos[js, 0])
+                            + np.abs(pos[i_c, 1] - pos[js, 1])
+                        )
+                    ).sum()
+                )
             if len(macro_fixed_x[i_c]):
-                init_wl += float((macro_fixed_w[i_c] * (
-                    np.abs(pos[i_c, 0] - macro_fixed_x[i_c]) +
-                    np.abs(pos[i_c, 1] - macro_fixed_y[i_c])
-                )).sum())
+                init_wl += float(
+                    (
+                        macro_fixed_w[i_c]
+                        * (
+                            np.abs(pos[i_c, 0] - macro_fixed_x[i_c])
+                            + np.abs(pos[i_c, 1] - macro_fixed_y[i_c])
+                        )
+                    ).sum()
+                )
 
-        init_sos = float((density_grid ** 2).sum())
+        init_sos = float((density_grid**2).sum())
         # w_dens: weight so density starts at sa_density_weight × WL contribution
-        w_dens = (self.sa_density_weight * init_wl / init_sos) if init_sos > 1e-12 else 0.0
+        w_dens = (
+            (self.sa_density_weight * init_wl / init_sos) if init_sos > 1e-12 else 0.0
+        )
 
-        init_cong = float((h_dem ** 2).sum() + (v_dem ** 2).sum())
+        init_cong = float((h_dem**2).sum() + (v_dem**2).sum())
         # w_cong: weight so congestion starts at sa_density_weight × WL contribution
         # (same multiplier as density — both are spreading signals)
-        w_cong = (self.sa_density_weight * init_wl / init_cong) if init_cong > 1e-12 else 0.0
+        w_cong = (
+            (self.sa_density_weight * init_wl / init_cong) if init_cong > 1e-12 else 0.0
+        )
 
-        current_wl   = init_wl
-        current_sos  = init_sos
+        current_wl = init_wl
+        current_sos = init_sos
         current_cong = init_cong
         current_cost = current_wl + w_dens * current_sos + w_cong * current_cong
-        best_pos  = pos.copy()
+        best_pos = pos.copy()
         best_cost = current_cost
 
         T_start = max(cw, ch) * 0.10
-        T_end   = max(cw, ch) * 0.001
+        T_end = max(cw, ch) * 0.001
 
         for step in range(self.sa_iters):
             frac = step / self.sa_iters
@@ -936,18 +1039,24 @@ class ConvexOptPlacer:
                 sigma = T * (0.2 + 0.8 * (1 - frac))
                 nx = np.clip(ox + random.gauss(0, sigma), half_w[i], cw - half_w[i])
                 ny = np.clip(oy + random.gauss(0, sigma), half_h[i], ch - half_h[i])
-                pos[i, 0] = nx; pos[i, 1] = ny
+                pos[i, 0] = nx
+                pos[i, 1] = ny
                 if has_overlap(i):
-                    pos[i, 0] = ox; pos[i, 1] = oy
+                    pos[i, 0] = ox
+                    pos[i, 1] = oy
                     continue
                 delta_wl = delta_move(i, ox, oy, nx, ny)
-                ch_dict  = _dens_changes(ox, oy, nx, ny, sizes[i, 0], sizes[i, 1])
+                ch_dict = _dens_changes(ox, oy, nx, ny, sizes[i, 0], sizes[i, 1])
 
             elif move_type < 0.75:
                 # Swap (prefer connected neighbours)
                 if neighbors[i] and random.random() < 0.7:
                     cands = [nb for nb in neighbors[i] if movable[nb]]
-                    j = int(random.choice(cands)) if cands else int(random.choice(movable_idx))
+                    j = (
+                        int(random.choice(cands))
+                        if cands
+                        else int(random.choice(movable_idx))
+                    )
                 else:
                     j = int(random.choice(movable_idx))
                 if i == j:
@@ -955,16 +1064,22 @@ class ConvexOptPlacer:
                 ojx, ojy = pos[j, 0], pos[j, 1]
                 pos[i, 0] = np.clip(ojx, half_w[i], cw - half_w[i])
                 pos[i, 1] = np.clip(ojy, half_h[i], ch - half_h[i])
-                pos[j, 0] = np.clip(ox,  half_w[j], cw - half_w[j])
-                pos[j, 1] = np.clip(oy,  half_h[j], ch - half_h[j])
+                pos[j, 0] = np.clip(ox, half_w[j], cw - half_w[j])
+                pos[j, 1] = np.clip(oy, half_h[j], ch - half_h[j])
                 if has_overlap(i) or has_overlap(j):
-                    pos[i, 0] = ox;  pos[i, 1] = oy
-                    pos[j, 0] = ojx; pos[j, 1] = ojy
+                    pos[i, 0] = ox
+                    pos[i, 1] = oy
+                    pos[j, 0] = ojx
+                    pos[j, 1] = ojy
                     continue
                 delta_wl = delta_swap_wl(i, j, ox, oy, ojx, ojy)
                 # Merge both moves' density changes simultaneously
-                c1 = _dens_changes(ox, oy, pos[i, 0], pos[i, 1], sizes[i, 0], sizes[i, 1])
-                c2 = _dens_changes(ojx, ojy, pos[j, 0], pos[j, 1], sizes[j, 0], sizes[j, 1])
+                c1 = _dens_changes(
+                    ox, oy, pos[i, 0], pos[i, 1], sizes[i, 0], sizes[i, 1]
+                )
+                c2 = _dens_changes(
+                    ojx, ojy, pos[j, 0], pos[j, 1], sizes[j, 0], sizes[j, 1]
+                )
                 ch_dict = dict(c1)
                 for cell, dc in c2.items():
                     ch_dict[cell] = ch_dict.get(cell, 0.0) + dc
@@ -977,68 +1092,86 @@ class ConvexOptPlacer:
                 alpha = random.uniform(0.05, 0.35)
                 nx = np.clip(ox + alpha * (pos[nb, 0] - ox), half_w[i], cw - half_w[i])
                 ny = np.clip(oy + alpha * (pos[nb, 1] - oy), half_h[i], ch - half_h[i])
-                pos[i, 0] = nx; pos[i, 1] = ny
+                pos[i, 0] = nx
+                pos[i, 1] = ny
                 if has_overlap(i):
-                    pos[i, 0] = ox; pos[i, 1] = oy
+                    pos[i, 0] = ox
+                    pos[i, 1] = oy
                     continue
                 delta_wl = delta_move(i, ox, oy, nx, ny)
-                ch_dict  = _dens_changes(ox, oy, nx, ny, sizes[i, 0], sizes[i, 1])
+                ch_dict = _dens_changes(ox, oy, nx, ny, sizes[i, 0], sizes[i, 1])
 
-            delta_sos  = _delta_sos(ch_dict)
+            delta_sos = _delta_sos(ch_dict)
 
             # Routing congestion delta (RUDY model, incremental bbox update)
             aff_rn = set(macro_to_rn[i])
             if j is not None:
                 aff_rn |= set(macro_to_rn[j])
-            cong_ch    = {}
+            cong_ch = {}
             new_bboxes = {}
             for rn_idx in aff_rn:
                 ob = rn_bbox[rn_idx]
                 # Fast-path: if neither moved macro is at a bbox boundary, the
                 # bounding box cannot change — skip the expensive recompute.
                 eps = 1e-6
-                i_at_bnd = (abs(ox -ob[0])<eps or abs(ox -ob[1])<eps or
-                            abs(oy -ob[2])<eps or abs(oy -ob[3])<eps)
-                j_at_bnd = (j is not None and
-                            (abs(ojx-ob[0])<eps or abs(ojx-ob[1])<eps or
-                             abs(ojy-ob[2])<eps or abs(ojy-ob[3])<eps))
+                i_at_bnd = (
+                    abs(ox - ob[0]) < eps
+                    or abs(ox - ob[1]) < eps
+                    or abs(oy - ob[2]) < eps
+                    or abs(oy - ob[3]) < eps
+                )
+                j_at_bnd = j is not None and (
+                    abs(ojx - ob[0]) < eps
+                    or abs(ojx - ob[1]) < eps
+                    or abs(ojy - ob[2]) < eps
+                    or abs(ojy - ob[3]) < eps
+                )
                 if not (i_at_bnd or j_at_bnd):
                     new_bboxes[rn_idx] = ob
                     continue
                 nb = _rn_current_bbox(rn_idx)
                 new_bboxes[rn_idx] = nb
-                if nb[0]==ob[0] and nb[1]==ob[1] and nb[2]==ob[2] and nb[3]==ob[3]:
+                if (
+                    nb[0] == ob[0]
+                    and nb[1] == ob[1]
+                    and nb[2] == ob[2]
+                    and nb[3] == ob[3]
+                ):
                     continue
                 for k, (dh, dv) in _rudy_ch(*ob, *nb, rn_wt[rn_idx]).items():
-                    cdh, cdv = cong_ch.get(k, (0., 0.))
-                    cong_ch[k] = (cdh+dh, cdv+dv)
+                    cdh, cdv = cong_ch.get(k, (0.0, 0.0))
+                    cong_ch[k] = (cdh + dh, cdv + dv)
             delta_cong = _delta_cong_sos(cong_ch)
 
             delta = delta_wl + w_dens * delta_sos + w_cong * delta_cong
 
             # Metropolis acceptance
             if delta < 0 or random.random() < math.exp(-delta / max(T, 1e-10)):
-                current_wl   += delta_wl
-                current_sos  += delta_sos
+                current_wl += delta_wl
+                current_sos += delta_sos
                 current_cong += delta_cong
-                current_cost  = current_wl + w_dens * current_sos + w_cong * current_cong
+                current_cost = current_wl + w_dens * current_sos + w_cong * current_cong
                 _apply_changes(ch_dict)
                 _apply_cong(cong_ch)
                 for rn_idx, nb in new_bboxes.items():
                     rn_bbox[rn_idx] = nb
                 if current_cost < best_cost:
                     best_cost = current_cost
-                    best_pos  = pos.copy()
+                    best_pos = pos.copy()
             else:
-                pos[i, 0] = ox; pos[i, 1] = oy
+                pos[i, 0] = ox
+                pos[i, 1] = oy
                 if j is not None:
-                    pos[j, 0] = ojx; pos[j, 1] = ojy
+                    pos[j, 0] = ojx
+                    pos[j, 1] = ojy
 
         return best_pos
 
     # Gradient Refinement
 
-    def _grad_refine(self, pos, movable, sizes, benchmark, n_hard, n_total, port_pos, cw, ch):
+    def _grad_refine(
+        self, pos, movable, sizes, benchmark, n_hard, n_total, port_pos, cw, ch
+    ):
         """
         Gradient-based refinement using smooth HPWL (log-sum-exp) + Gaussian density.
 
@@ -1073,16 +1206,16 @@ class ConvexOptPlacer:
         alpha = float(max(cw, ch)) / 100.0
 
         all_macro_pos = benchmark.macro_positions.numpy().astype(np.float64)
-        glob_to_loc   = {int(g): l for l, g in enumerate(movable_idx)}
+        glob_to_loc = {int(g): l for l, g in enumerate(movable_idx)}
 
         # ── Collect per-net node lists ────────────────────────────────────────
-        raw_mov   = []   # list of lists of local movable indices
-        raw_fixed = []   # list of lists of [x, y] for fixed endpoints
-        raw_w     = []
+        raw_mov = []  # list of lists of local movable indices
+        raw_fixed = []  # list of lists of [x, y] for fixed endpoints
+        raw_w = []
 
         for nodes_tensor, w_t in zip(benchmark.net_nodes, benchmark.net_weights):
             nodes = [int(n) for n in nodes_tensor.numpy()]
-            w     = float(w_t)
+            w = float(w_t)
             if len(nodes) < 2:
                 continue
 
@@ -1091,13 +1224,15 @@ class ConvexOptPlacer:
             for n in nodes:
                 if n not in glob_to_loc:
                     if n < n_total:
-                        fixed_pts.append([float(all_macro_pos[n, 0]),
-                                          float(all_macro_pos[n, 1])])
+                        fixed_pts.append(
+                            [float(all_macro_pos[n, 0]), float(all_macro_pos[n, 1])]
+                        )
                     else:
                         p = n - n_total
                         if p < len(port_pos):
-                            fixed_pts.append([float(port_pos[p, 0]),
-                                              float(port_pos[p, 1])])
+                            fixed_pts.append(
+                                [float(port_pos[p, 0]), float(port_pos[p, 1])]
+                            )
 
             if len(mov_local) + len(fixed_pts) < 2:
                 continue
@@ -1109,7 +1244,7 @@ class ConvexOptPlacer:
         if not raw_mov:
             return pos
 
-        n_nets  = len(raw_w)
+        n_nets = len(raw_w)
         wl_norm = float((cw + ch) * benchmark.num_nets)
 
         # ── Build padded batch tensors (precomputed, outside closure) ─────────
@@ -1126,57 +1261,63 @@ class ConvexOptPlacer:
         MAX_K = min(max(len(m) + len(f) for m, f in zip(raw_mov, raw_fixed)), 64)
 
         # Movable slot indices (sentinel = n_mov, clamped away in gather)
-        mov_slots    = torch.full((n_nets, MAX_K), n_mov,  dtype=torch.int64)
+        mov_slots = torch.full((n_nets, MAX_K), n_mov, dtype=torch.int64)
         # Fixed coordinates for non-movable slots
-        fixed_xy_pad = torch.zeros(n_nets, MAX_K, 2,       dtype=torch.float32)
+        fixed_xy_pad = torch.zeros(n_nets, MAX_K, 2, dtype=torch.float32)
         # Masks
-        is_movable   = torch.zeros(n_nets, MAX_K,           dtype=torch.bool)
-        is_valid     = torch.zeros(n_nets, MAX_K,           dtype=torch.bool)
-        net_weights_t = torch.tensor(raw_w,                 dtype=torch.float32)  # [n_nets]
+        is_movable = torch.zeros(n_nets, MAX_K, dtype=torch.bool)
+        is_valid = torch.zeros(n_nets, MAX_K, dtype=torch.bool)
+        net_weights_t = torch.tensor(raw_w, dtype=torch.float32)  # [n_nets]
 
         for i, (ml, fl, _) in enumerate(zip(raw_mov, raw_fixed, raw_w)):
             k_m = min(len(ml), MAX_K)
             k_f = min(len(fl), MAX_K - k_m)
             if k_m > 0:
-                mov_slots[i, :k_m]  = torch.tensor(ml[:k_m], dtype=torch.int64)
+                mov_slots[i, :k_m] = torch.tensor(ml[:k_m], dtype=torch.int64)
                 is_movable[i, :k_m] = True
-                is_valid[i,   :k_m] = True
+                is_valid[i, :k_m] = True
             if k_f > 0:
-                fixed_xy_pad[i, k_m:k_m+k_f] = torch.tensor(fl[:k_f], dtype=torch.float32)
-                is_valid[i,   k_m:k_m+k_f]   = True
+                fixed_xy_pad[i, k_m : k_m + k_f] = torch.tensor(
+                    fl[:k_f], dtype=torch.float32
+                )
+                is_valid[i, k_m : k_m + k_f] = True
 
         # ── Density setup ─────────────────────────────────────────────────────
         rows, cols = benchmark.grid_rows, benchmark.grid_cols
-        n_cells    = rows * cols
+        n_cells = rows * cols
         cell_w, cell_h = cw / cols, ch / rows
 
-        cx_arr = (np.arange(cols) + 0.5) * cell_w   # [cols]
-        cy_arr = (np.arange(rows) + 0.5) * cell_h   # [rows]
+        cx_arr = (np.arange(cols) + 0.5) * cell_w  # [cols]
+        cy_arr = (np.arange(rows) + 0.5) * cell_h  # [rows]
         cell_cx = torch.tensor(
-            np.tile(cx_arr, rows), dtype=torch.float32)   # [n_cells]  row-major
+            np.tile(cx_arr, rows), dtype=torch.float32
+        )  # [n_cells]  row-major
         cell_cy = torch.tensor(
-            np.repeat(cy_arr, cols), dtype=torch.float32) # [n_cells]
+            np.repeat(cy_arr, cols), dtype=torch.float32
+        )  # [n_cells]
 
         # σ = macro half-size; precompute reciprocals for cheaper closure math
-        sigma_mov = torch.tensor(sizes[movable_idx], dtype=torch.float32).clamp(min=1e-3)
+        sigma_mov = torch.tensor(sizes[movable_idx], dtype=torch.float32).clamp(
+            min=1e-3
+        )
         inv_sx = 1.0 / sigma_mov[:, 0]  # [n_mov]
         inv_sy = 1.0 / sigma_mov[:, 1]
 
         # Precompute scaled cell-centre offsets: [n_mov, n_cells] (constant)
         # scaled_cc_x[i, c] = cell_cx[c] * inv_sx[i]
         # In the closure: diff_x_scaled[i,c] = x_mov[i,0]*inv_sx[i] - scaled_cc_x[i,c]
-        scaled_cc_x = inv_sx[:, None] * cell_cx[None, :]   # [n_mov, n_cells]
+        scaled_cc_x = inv_sx[:, None] * cell_cx[None, :]  # [n_mov, n_cells]
         scaled_cc_y = inv_sy[:, None] * cell_cy[None, :]
 
         # Fixed density from soft macros (never changes)
         soft_dens = torch.zeros(n_cells, dtype=torch.float32)
         for i_sm in range(n_hard, n_total):
-            sx  = float(all_macro_pos[i_sm, 0])
-            sy  = float(all_macro_pos[i_sm, 1])
+            sx = float(all_macro_pos[i_sm, 0])
+            sy = float(all_macro_pos[i_sm, 1])
             swx = max(float(benchmark.macro_sizes[i_sm, 0]), 1e-3)
             swy = max(float(benchmark.macro_sizes[i_sm, 1]), 1e-3)
-            dx  = (cell_cx - sx) / swx
-            dy  = (cell_cy - sy) / swy
+            dx = (cell_cx - sx) / swx
+            dy = (cell_cy - sy) / swy
             soft_dens = soft_dens + torch.exp(-0.5 * (dx * dx + dy * dy))
 
         # ── Optimisation variable ─────────────────────────────────────────────
@@ -1186,11 +1327,14 @@ class ConvexOptPlacer:
         x_mov = torch.tensor(pos[movable_idx], dtype=torch.float32, requires_grad=True)
 
         optimizer = torch.optim.LBFGS(
-            [x_mov], lr=1.0, max_iter=5, line_search_fn="strong_wolfe",
+            [x_mov],
+            lr=1.0,
+            max_iter=5,
+            line_search_fn="strong_wolfe",
         )
 
-        NEG_INF = -1e9   # masks padding in logsumexp (exp(NEG_INF/α) ≈ 0)
-        w_dens  = [None]
+        NEG_INF = -1e9  # masks padding in logsumexp (exp(NEG_INF/α) ≈ 0)
+        w_dens = [None]
 
         def closure():
             optimizer.zero_grad()
@@ -1201,48 +1345,48 @@ class ConvexOptPlacer:
             # safe_slots clamps the sentinel (n_mov) to a valid index; the
             # gathered value for sentinel slots is overwritten by fixed_xy_pad
             # via torch.where, so its value doesn't matter.
-            safe_slots = mov_slots.clamp(0, n_mov - 1)        # [n_nets, MAX_K]
-            gathered   = x_mov[safe_slots]                     # [n_nets, MAX_K, 2]
+            safe_slots = mov_slots.clamp(0, n_mov - 1)  # [n_nets, MAX_K]
+            gathered = x_mov[safe_slots]  # [n_nets, MAX_K, 2]
 
             # Blend: movable slots → x_mov, fixed/padding slots → precomputed coords
             all_xy = torch.where(is_movable[:, :, None], gathered, fixed_xy_pad)
 
             # Mask padding to NEG_INF so exp contribution → 0 in logsumexp
-            all_x  =  all_xy[:, :, 0].masked_fill(~is_valid, NEG_INF)   # [n_nets, MAX_K]
-            neg_x  = -all_xy[:, :, 0].masked_fill(~is_valid, NEG_INF)
-            all_y  =  all_xy[:, :, 1].masked_fill(~is_valid, NEG_INF)
-            neg_y  = -all_xy[:, :, 1].masked_fill(~is_valid, NEG_INF)
+            all_x = all_xy[:, :, 0].masked_fill(~is_valid, NEG_INF)  # [n_nets, MAX_K]
+            neg_x = -all_xy[:, :, 0].masked_fill(~is_valid, NEG_INF)
+            all_y = all_xy[:, :, 1].masked_fill(~is_valid, NEG_INF)
+            neg_y = -all_xy[:, :, 1].masked_fill(~is_valid, NEG_INF)
 
             # smooth HPWL per net = α·lse(x/α) + α·lse(-x/α) + same for y
             smooth_span = (
-                alpha * torch.logsumexp(all_x / alpha, dim=1) +
-                alpha * torch.logsumexp(neg_x / alpha, dim=1) +
-                alpha * torch.logsumexp(all_y / alpha, dim=1) +
-                alpha * torch.logsumexp(neg_y / alpha, dim=1)
-            )                                                  # [n_nets]
+                alpha * torch.logsumexp(all_x / alpha, dim=1)
+                + alpha * torch.logsumexp(neg_x / alpha, dim=1)
+                + alpha * torch.logsumexp(all_y / alpha, dim=1)
+                + alpha * torch.logsumexp(neg_y / alpha, dim=1)
+            )  # [n_nets]
             wl = (net_weights_t * smooth_span).sum() / wl_norm
 
             # ── Density (separable Gaussian, no 3-D tensor) ───────────────────
             #
             # diff_x_scaled[i,c] = (x_mov[i,0] / σx[i]) − (cell_cx[c] / σx[i])
             #                    = x_mov[i,0]*inv_sx[i] − scaled_cc_x[i,c]
-            xs = (x_mov[:, 0] * inv_sx)[:, None] - scaled_cc_x   # [n_mov, n_cells]
+            xs = (x_mov[:, 0] * inv_sx)[:, None] - scaled_cc_x  # [n_mov, n_cells]
             ys = (x_mov[:, 1] * inv_sy)[:, None] - scaled_cc_y
-            gauss   = torch.exp(-0.5 * (xs * xs + ys * ys))       # [n_mov, n_cells]
-            density = gauss.sum(0) + soft_dens                     # [n_cells]
+            gauss = torch.exp(-0.5 * (xs * xs + ys * ys))  # [n_mov, n_cells]
+            density = gauss.sum(0) + soft_dens  # [n_cells]
             dens_loss = (density * density).sum() / n_cells
 
             if w_dens[0] is None:
                 wl_v = float(wl.detach())
-                dv   = float(dens_loss.detach())
+                dv = float(dens_loss.detach())
                 w_dens[0] = (0.5 * wl_v / dv) if dv > 1e-12 else 0.0
 
             # ── Boundary penalty ──────────────────────────────────────────────
             bnd = (
-                torch.relu(hw_t - x_mov[:, 0]).pow(2) +
-                torch.relu(x_mov[:, 0] - (cw - hw_t)).pow(2) +
-                torch.relu(hh_t - x_mov[:, 1]).pow(2) +
-                torch.relu(x_mov[:, 1] - (ch - hh_t)).pow(2)
+                torch.relu(hw_t - x_mov[:, 0]).pow(2)
+                + torch.relu(x_mov[:, 0] - (cw - hw_t)).pow(2)
+                + torch.relu(hh_t - x_mov[:, 1]).pow(2)
+                + torch.relu(x_mov[:, 1] - (ch - hh_t)).pow(2)
             ).sum()
 
             loss = wl + w_dens[0] * dens_loss + 10.0 * bnd
