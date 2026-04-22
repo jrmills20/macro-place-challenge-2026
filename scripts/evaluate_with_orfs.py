@@ -574,6 +574,15 @@ set_output_delay -clock core_clock 0 [all_outputs]
             # No custom placement — let ORFS's rtl_macro_placer handle it (baseline mode)
             # Remove MACRO_PLACEMENT_TCL so ORFS does its own placement
             config_text = re.sub(r'\nexport MACRO_PLACEMENT_TCL\s*=.*\n', '\n', config_text)
+            # Set RTLMP fence to core area so rtl_macro_placer knows the bounds
+            if core_area and 'RTLMP_FENCE' not in config_text:
+                config_text += (
+                    f'\n# rtl_macro_placer fence bounds (= CORE_AREA)\n'
+                    f'export RTLMP_FENCE_LX = {core_area[0]}\n'
+                    f'export RTLMP_FENCE_LY = {core_area[1]}\n'
+                    f'export RTLMP_FENCE_UX = {core_area[2]}\n'
+                    f'export RTLMP_FENCE_UY = {core_area[3]}\n'
+                )
             config_mk.write_text(config_text)
             print(f"  ✓ Baseline mode: letting ORFS rtl_macro_placer handle placement")
 
