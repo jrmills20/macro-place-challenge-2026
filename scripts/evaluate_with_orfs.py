@@ -58,8 +58,8 @@ def get_top_module_name(benchmark_name: str, verilog_file: Path) -> str:
         'ariane133_ng45': 'ariane',
         'ariane136_ng45': 'ariane',
         'ariane136_asap7': 'ariane',
-        'nvdla_ng45': 'NV_nvdla',
-        'nvdla_asap7': 'NV_nvdla',
+        'nvdla_ng45': 'NV_NVDLA_partition_c',
+        'nvdla_asap7': 'NV_NVDLA_partition_c',
         'mempool_tile_ng45': 'mempool_tile',
         'mempool_tile_asap7': 'mempool_tile',
         'bp_quad_ng45': 'black_parrot',
@@ -344,7 +344,7 @@ def evaluate_benchmark(
         # Write config.mk
         (orfs_config_dir / "config.mk").write_text("""\
 export DESIGN_NICKNAME = nvdla
-export DESIGN_NAME = NV_nvdla
+export DESIGN_NAME = NV_NVDLA_partition_c
 export PLATFORM    = nangate45
 
 export VERILOG_FILES = ./designs/$(PLATFORM)/$(DESIGN_NICKNAME)/NV_NVDLA_partition_c.v
